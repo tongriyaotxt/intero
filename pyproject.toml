@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "intero"
+version = "0.1.0"
+description = "Titans-style test-time neural memory + autonomy heartbeat for frozen LLMs"
+requires-python = ">=3.10"
+dependencies = ["torch>=2.2", "numpy>=1.26"]
+
+[project.optional-dependencies]
+st = ["sentence-transformers>=3.0"]
+mcp = ["mcp>=1.0"]
+
+[tool.setuptools.packages.find]
+include = ["intero*"]

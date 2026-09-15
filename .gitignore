@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+bench/results/
+*.npy
+*.sqlite3
+.env
