@@ -6,3 +6,5 @@ bench/results/
 *.npy
 *.sqlite3
 .env
+.normalize_cache.json
+checkpoints/

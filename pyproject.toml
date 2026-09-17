@@ -12,6 +12,7 @@ dependencies = ["torch>=2.2", "numpy>=1.26"]
 [project.optional-dependencies]
 st = ["sentence-transformers>=3.0"]
 mcp = ["mcp>=1.0"]
+bench = ["sentence-transformers>=3.0", "datasets>=2.0", "accelerate>=1.1.0"]
 
 [tool.setuptools.packages.find]
 include = ["intero*"]

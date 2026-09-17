@@ -25,9 +25,9 @@ y = M(q)                   读出，前向不更新 (论文 Eq.15)
 
 ```bash
 pip install -e .            # 依赖仅 torch + numpy
-python -m unittest discover tests   # 黄金测试（含冠军超参锁定）
+python -m unittest discover tests   # 黄金测试（24 个：记忆/门控/心跳/夜间时钟/注入）
 python -m intero                  # 冒烟 demo：100事实+300噪声→10问
-python -c "from intero.encoder import probe, best_available; print(probe(best_available()))"
+PYTHONPATH=. python -m intero.mcp_server   # MCP server（stdio，宿主可挂）
 ```
 
 ## 代码地图
@@ -38,8 +38,18 @@ python -c "from intero.encoder import probe, best_available; print(probe(best_av
 | `intero/gates.py` | 手工门控 θ/η/α + 写入门（冠军超参已冻结，见 bench/CALIBRATION.md） |
 | `intero/store.py` | 内容库（**永远存原文**——换 encoder 可重建）+ 双路读出 λ 混合 |
 | `intero/encoder.py` | 可插拔 encoder：bge(ST) → API → TF-IDF 兜底；中文探针 margin>0.15 准入 |
+| `intero/normalize.py` | 写入前 LLM 归一化（api/local 双后端 + 磁盘缓存 + 透传兜底） |
+| `intero/core.py` | Intero 门面：记忆器官整机（M4 接入载体） |
+| `intero/inject.py` | prompt 注入装配（consolidated 优先 / conflict 标注 / 预算截断） |
+| `intero/heartbeat.py` | M3 心跳：三态变心率 + 意图调度 + 主动性拍卖 + 反拗期 |
+| `intero/dream.py` | M5 夜间时钟：Dream 回放 + 策展 + 晋升门 |
+| `intero/mcp_server.py` | MCP server（memory_write/recall/status 三工具） |
 | `bench/calibrate.py` | 三相位标定台（背记/抗噪/过期），冠军配置来源 |
-| `bench/CALIBRATION.md` | 标定实录（三次失败诊断 + 冻结值 + 阈值依据） |
+| `bench/CALIBRATION.md` | 标定实录（失败诊断 + 冻结值 + 探针实录 + M1.5 改道） |
+| `bench/scenarios.py` / `m2_benchmark.py` | M2 剧本生成器 + 三方对拍台 |
+| `bench/M2_REPORT.md` | M2 三种子对拍报告（对照预先登记表） |
+| `bench/probe_step0.py` / `probe_pipeline.py` / `probe_oracle.py` | 探针实验组（零训练候选 / 管线验收 / 理想归一化隔离） |
+| `bench/finetune_encoder.py` | 干净句对比微调（扩否定 margin） |
 
 ## 对论文的偏离（诚实标注）
 
@@ -51,12 +61,12 @@ python -c "from intero.encoder import probe, best_available; print(probe(best_av
 
 ## 路线图
 
-- [x] M0+M1 竖片：记忆核心 + 内容库 + 标定 + 冒烟 demo（测试 9/9 绿；demo 写入率 29%，TF-IDF 下 λ→0 优雅退化）
-- [ ] **M1.5 encoder 攻坚**：探针实测 bge 败于整句否定（见 bench/CALIBRATION.md）→ 对比对微调 bge 并开源
-- [ ] M2 基准：剧本生成器（三类埋点+语义近邻噪声+过期事实），sidecar vs RAG vs 全上下文三方对拍
-- [ ] M3 心跳：三态变心率 + 意图调度器 + 主动性拍卖（沉默是竞拍者）+ 反拗期
-- [ ] M4 接入：LLM 上下文注入 + MCP server
-- [ ] M5 夜间时钟：Dream 回放 + 策展 → LoRA 巩固 → 晋升门
+- [x] M0+M1 竖片：记忆核心 + 内容库 + 标定 + 冒烟 demo（demo 写入率 29%，TF-IDF 下 λ→0 优雅退化）
+- [x] **M1.5 encoder 攻坚（改道完成）**：零训练手段全灭（Step 0 实录）→ **LLM 归一化**主线上位（`intero/normalize.py`）+ 干净句轻量微调加固（留出 test 排序 100%、margin_mean 0.135→0.247）；两档验收口径公开重校准（CALIBRATION.md）
+- [x] M2 基准：剧本生成器三类埋点+噪声+过期事实，三种子三方对拍 → **报告 [bench/M2_REPORT.md](bench/M2_REPORT.md)**（写入省~70% ✓、过期占比 3~8 倍优势 ✓、组合事实超预期全胜 ✓、孤立事实召回减半⚠️ 记录在案）
+- [x] M3 心跳：三态变心率 + 意图调度器（TTL）+ 主动性拍卖（沉默是竞拍者）+ 反拗期（`intero/heartbeat.py`，测试 7/7）
+- [x] M4 接入：Intero 门面（`core.py`）+ prompt 注入装配（`inject.py`）+ MCP server（`mcp_server.py`，mcp 1.x/2.x 兼容）
+- [x] M5 夜间时钟：Dream 回放 + 策展去重/矛盾标记 → 晋升门（`dream.py`，测试 3/3）
 
 ## 预先登记的胜负预测（M2 不许事后改口）
 

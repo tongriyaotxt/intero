@@ -45,6 +45,20 @@ class ContentStore:
         self._vecs.append(np.asarray(vec, dtype=np.float32))
         return i
 
+    def items(self) -> list[dict]:
+        """存活条目（含向量），M5 策展/晋升用。"""
+        live = self._live_ids()
+        return [
+            {"id": i, "text": r[0], "kind": r[1], "vec": self._vecs[self._ids.index(i)]}
+            for i in self._ids
+            if i in live and (r := self._db.execute(
+                "SELECT text, kind FROM items WHERE id=?", (i,)).fetchone())
+        ]
+
+    def update_kind(self, item_id: int, kind: str) -> None:
+        self._db.execute("UPDATE items SET kind=? WHERE id=?", (kind, item_id))
+        self._db.commit()
+
     def delete(self, item_id: int) -> None:
         """删除 = 原文抹除 + 向量屏蔽（crypto-shredding 的轻量版：数据本体不可读）。"""
         self._db.execute("UPDATE items SET text='', deleted=1 WHERE id=?", (item_id,))
