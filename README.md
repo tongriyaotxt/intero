@@ -44,6 +44,8 @@ cd intero
 INTERO_STORE=.intero/content.db HF_HUB_OFFLINE=1 PYTHONPATH=. \
     .venv/Scripts/python.exe -m intero.daemon --serve      # 气泡通知；加 --voice 语音播报
 # 或一键：scripts\start_daemon.bat（开机自启：手动运行 scripts\install_autostart.bat）
+# 日常唠嗑入口：scripts\chat.bat——单开新终端窗口起 kimi（独立上下文），
+#               daemon 没在跑会先自动拉起
 ```
 
 服务化实测：recall 47~140ms vs spawn 冷启动 ~15s（>100×）；MCP 在服务不在时回退本地实例。
@@ -54,6 +56,11 @@ daemon 每拍前先 reload sqlite 快照（吸收 MCP 侧新意图），跳完�
 已实测（2026-09-17）：注册意图后 daemon 在 60 秒静默期结束的第一拍主动弹窗，送达即清不重复。
 进入 DREAM（休眠）的第一拍自动跑夜间周期：dream 回放/策展/晋升 + **意图自生**（LLM 通读库存
 事实，按 remind/followup/care/association 四类萌发意图，可审计可去重）。也可 MCP 调 `dream_now` 手动触发。
+**内态驱动**（drives.py）：没事也会想起你——social（24h 没聊满分）/curiosity（摄入饥渴）/
+memory_health（矛盾积压）三维内态超阈即起心动念，冷却 4h，冲动仍走正常拍卖（tech-base/23 落地）。
+**作息底价**：23-7 点沉默底价抬到 0.9，深夜不叫醒。
+**话术人格化**：弹窗前过一遍 LLM 润色（离线原文透传），润色成品回写记录。
+**对话线头**：主动说过的话存 recent_said（48h 内），下次对话 recall 顶部【它曾主动说】——能接着唠。
 **理睬反馈闭环**：主动送达记账，10 分钟内用户响应记为理睬；同类意图满 3 次送达后，
 紧迫度乘子 = 0.5 + 理睬率——总被无视的话题自动闭嘴。
 **实体显著性门控**：关于用户的事实绕过惊讶门直接写（纵向模拟实测：纯惊讶门控在生活规模下

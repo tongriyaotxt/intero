@@ -41,7 +41,8 @@ def _page(title: str, body: str) -> str:
     return f"# {title}\n\n{READONLY_BANNER}{body}"
 
 
-def render(store, hb_snapshot: dict | None, feedback: dict) -> dict[str, str]:
+def render(store, hb_snapshot: dict | None, feedback: dict,
+           recent_said: list[dict] | None = None) -> dict[str, str]:
     """生成全部页面 {相对路径: 内容}。store=ContentStore, hb_snapshot=心跳快照 dict。"""
     items = store.items()                      # 存活条目（含 kind/vec）
     pages: dict[str, str] = {}
@@ -92,6 +93,11 @@ def render(store, hb_snapshot: dict | None, feedback: dict) -> dict[str, str]:
     pend = snap.get("pending", [])
     body += "\n## 待说事项（已赢拍卖、等你见面）\n\n" + (
         "".join(f"- [{p['kind']}] {p['payload']}\n" for p in pend) if pend else "（空）\n")
+    said = recent_said or []
+    body += "\n## 它曾主动说（对话线头，可以接着唠）\n\n" + (
+        "".join(f"- {datetime.fromtimestamp(s['ts']).strftime('%m-%d %H:%M')} {s['text']}\n"
+                for s in said[-10:])
+        if said else "（它还没主动说过话）\n")
     body += "\n## 理睬账本（它学到的\"说什么你会理\"）\n\n" + (
         "".join(f"- {k}：送达 {v['delivered']} 次 / 被理睬 {v['acked']} 次\n"
                 for k, v in sorted(feedback.items()))
@@ -110,10 +116,11 @@ def render(store, hb_snapshot: dict | None, feedback: dict) -> dict[str, str]:
 
 
 def export_wiki(store, hb_snapshot: dict | None, feedback: dict,
-                out_dir: str | Path = ".intero/wiki") -> int:
+                out_dir: str | Path = ".intero/wiki",
+                recent_said: list[dict] | None = None) -> int:
     """全量重写导出目录。返回写入文件数。"""
     out = Path(out_dir)
-    pages = render(store, hb_snapshot, feedback)
+    pages = render(store, hb_snapshot, feedback, recent_said)
     if out.exists():                       # 全量覆盖前清旧（日志页可能减少）
         for p in out.rglob("*.md"):
             p.unlink()

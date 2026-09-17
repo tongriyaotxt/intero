@@ -25,6 +25,7 @@ import sys
 import time
 
 from .core import Intero
+from .drives import circadian_floor, maybe_sprout_drive_intentions
 from .heartbeat import HeartState, Intention
 from .service import DEFAULT_PORT, serve_in_thread
 
@@ -68,11 +69,32 @@ $v.Rate = 0
 """)
 
 
-def notify(intention: Intention, voice: bool = False) -> None:
-    """默认通道：气泡 + （可选）语音。"""
-    balloon("intero 主动搭话", intention.payload)
+def polish(payload: str, context: str = "") -> str:
+    """搭话话术人格化：过一遍 LLM 变成自然口语（API 不可用则原样返回）。"""
+    from .intents import best_available_extractor
+
+    ex = best_available_extractor()
+    if not hasattr(ex, "_call"):                       # NullExtractor（离线）→ 原文
+        return payload
+    prompt = ("把下面这条提醒改写成一句自然的搭话，像熟悉的朋友随口说的，简短口语，不要列表不要解释。"
+              + (f"\n相关记忆（可参考，不必全提）：{context[:200]}" if context else "")
+              + f"\n原话：{payload}\n改写：")
+    try:
+        out = ex._call(prompt).strip().splitlines()[0]
+        return out or payload
+    except Exception:
+        return payload
+
+
+def notify(intention: Intention, voice: bool = False, context_fn=None) -> None:
+    """默认通道：气泡 + （可选）语音。话术经 LLM 人格化（离线则原文）；
+    润色后的成品回写 intention.payload——送达记录存的是用户真正看到的话。"""
+    ctx = context_fn(intention.payload) if context_fn else ""
+    text = polish(intention.payload, ctx)
+    intention.payload = text
+    balloon("intero 主动搭话", text)
     if voice:
-        speak(intention.payload)
+        speak(text)
 
 
 # ---- 主循环 ----
@@ -87,10 +109,11 @@ def deliver_due(organ: Intero, notify_fn=notify, voice: bool = False) -> int:
         return 0
     pending = organ.hb.deliver_pending()
     for p in pending:
-        notify_fn(p, voice=voice)
+        notify_fn(p, voice=voice)          # notify 会把润色后的话回写 p.payload
     if pending:
         organ.save_heartbeat()
-        organ.record_delivery([p.kind for p in pending], proactive=True)
+        organ.record_delivery([p.kind for p in pending], proactive=True,
+                              texts=[p.payload for p in pending])   # 留对话线头
     return len(pending)
 
 
@@ -100,10 +123,13 @@ def run(organ: Intero, voice: bool = False, once: bool = False,
     prev_state = None                       # None → 首拍若在 DREAM 也会跑一次夜间周期
     while True:
         organ.reload_heartbeat()          # 吸收 MCP 侧的新意图/交互时间
+        organ.hb.silence_floor = circadian_floor(time.localtime().tm_hour)   # 作息底价
+        fired = maybe_sprout_drive_intentions(organ)   # 内态驱动：没事也会想起你
         r = organ.daemon_tick()           # 只跳拍，不记交互（daemon 不是用户）
         n = deliver_due(organ, notify_fn=notify_fn, voice=voice)
+        extra = f" 内态萌发={fired}" if fired else ""
         print(f"[intero-daemon] tick 状态={r['状态']} 意图={r['意图队列']} "
-              f"待说={r['待说']} 本次主动送达={n}", file=out, flush=True)
+              f"待说={r['待说']} 本次主动送达={n}{extra}", file=out, flush=True)
         # 进入 DREAM（休眠）的第一拍：跑夜间周期——回放巩固 + 意图自生
         if organ.hb.state == HeartState.DREAM and prev_state != HeartState.DREAM:
             report = organ.dream_cycle()
@@ -122,10 +148,17 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = ap.parse_args()
     organ = Intero()
+
+    def context_of(payload: str) -> str:
+        # 注意：必须用 retrieve（纯查询），不能用 recall——recall 会记交互，
+        # daemon 一旦记交互就永远 ENGAGED，主动性死亡
+        return "; ".join(r["text"] for r in organ.retrieve(payload, topk=2))
+
+    notify_fn = (lambda p, voice=False: notify(p, voice=voice, context_fn=context_of))
     if args.serve:
         serve_in_thread(organ, port=args.port)
         print(f"[intero-daemon] 常驻服务已内嵌于 :{args.port}", flush=True)
-    run(organ, voice=args.voice, once=args.once)
+    run(organ, voice=args.voice, once=args.once, notify_fn=notify_fn)
 
 
 if __name__ == "__main__":

@@ -99,9 +99,12 @@ class Intero:
             return 1.0
         return 0.5 + s["acked"] / s["delivered"]
 
-    def record_delivery(self, kinds: list[str], proactive: bool) -> None:
-        """记录一次送达。proactive=True（daemon 弹窗）时留下待理睬标记，
-        下次用户交互在 ACK_WINDOW 内到达即记为被理睬；对话内送达直接算理睬。"""
+    def record_delivery(self, kinds: list[str], proactive: bool,
+                        texts: list[str] | None = None) -> None:
+        """记录一次送达。proactive=True（daemon 弹窗）时：
+        1. 留下待理睬标记（ACK_WINDOW 内用户交互 = 被理睬）；
+        2. 把说过的话存进 recent_said——下次对话 recall 顶部可见，用户能接着唠。
+        对话内送达直接算理睬。"""
         fb = self._feedback()
         for k in kinds:
             s = fb.setdefault(k, {"delivered": 0, "acked": 0})
@@ -111,8 +114,14 @@ class Intero:
         self._save_feedback(fb)
         if proactive:
             import time as _t
+
             self.st.set_meta_text("last_proactive",
                                   json.dumps({"ts": _t.time(), "kinds": kinds}))
+            if texts:
+                said = json.loads(self.st.get_meta_text("recent_said") or "[]")
+                for k, t in zip(kinds, texts):
+                    said.append({"ts": _t.time(), "kind": k, "text": t})
+                self.st.set_meta_text("recent_said", json.dumps(said[-20:]))  # 只留最近 20 条
 
     def _check_ack(self) -> None:
         import time as _t
@@ -189,7 +198,9 @@ class Intero:
     def export_wiki(self, out_dir: str = ".intero/wiki") -> int:
         from .wiki import export_wiki
 
-        return export_wiki(self.st, self.hb.snapshot(), self._feedback(), out_dir)
+        said = json.loads(self.st.get_meta_text("recent_said") or "[]")
+        return export_wiki(self.st, self.hb.snapshot(), self._feedback(), out_dir,
+                           recent_said=said)
 
     def add_intention(self, kind: str, payload: str, urgency: float = 0.5, ttl: float = 3600.0) -> dict:
         """注册一条意图（冲动）。心跳只裁决时机，说什么由 LLM 决定。"""
@@ -277,15 +288,26 @@ class Intero:
 
         self._beat()
         block = assemble(self.retrieve(query, topk=topk * 2), topk=topk, budget_chars=budget_chars)
+        heads = []
+        # 它曾主动说过的话（48h 内）：对话线头，用户可直接接着唠
+        import time as _t
+        from datetime import datetime as _dt
+
+        said = json.loads(self.st.get_meta_text("recent_said") or "[]")
+        recent = [s for s in said if _t.time() - s["ts"] < 48 * 3600][-3:]
+        if recent:
+            lines = [f"- {_dt.fromtimestamp(s['ts']).strftime('%m-%d %H:%M')} 它说：{s['text']}"
+                     for s in recent]
+            heads.append("【它曾主动说】以下是你不在场时它主动说过的话，你可以直接接着聊：\n"
+                         + "\n".join(lines))
         pending = self.hb.deliver_pending()
         if pending:
             self.save_heartbeat()
             self.record_delivery([p.kind for p in pending], proactive=False)
             items = "\n".join(f"- [{p.kind}] {p.payload}" for p in pending)
-            head = ("【待说事项】以下是你不在场时记忆器官决定要主动提起的事，"
-                    "请在回答用户前先自然地处理：\n" + items)
-            return head + ("\n\n" + block if block else "")
-        return block
+            heads.append("【待说事项】以下是你不在场时记忆器官决定要主动提起的事，"
+                         "请在回答用户前先自然地处理：\n" + items)
+        return "\n\n".join(heads + ([block] if block else []))
 
     # ---- 状态 ----
 
