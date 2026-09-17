@@ -30,7 +30,20 @@ python -m intero                  # 冒烟 demo：100事实+300噪声→10问
 PYTHONPATH=. python -m intero.mcp_server   # MCP server（stdio，宿主可挂）
 ```
 
-### 接入 Kimi CLI（项目级，只在本目录生效）
+### 主动搭话守护进程（daemon）
+
+MCP 是被动应答（宿主调用才活）；`daemon` 是常驻起搏器——自己跳心跳，拍卖赢出的冲动**主动找你**：
+
+```bash
+cd intero
+INTERO_STORE=.intero/content.db HF_HUB_OFFLINE=1 PYTHONPATH=. \
+    .venv/Scripts/python.exe -m intero.daemon          # 气泡通知；加 --voice 语音播报
+```
+
+送达路由：你在聊（ENGAGED，60 秒内有交互）→ 冲动留给对话内 recall 送达，不打扰；
+你离开（WATCH/DREAM）→ Windows 气泡（+可选 SAPI 语音）主动搭话。
+daemon 每拍前先 reload sqlite 快照（吸收 MCP 侧新意图），跳完即存——进程间只通过库通信。
+已实测（2026-09-17）：注册意图后 daemon 在 60 秒静默期结束的第一拍主动弹窗，送达即清不重复。
 
 `.kimi/mcp.json` 已配好（stdio，绝对路径，记忆持久化到 `.intero/content.db`）：
 
@@ -65,6 +78,7 @@ interact() + tick()（懒惰心跳，TTL/状态迁移走墙钟）；拍卖赢出
 | `intero/heartbeat.py` | M3 心跳：三态变心率 + 意图调度 + 主动性拍卖 + 反拗期 + 待说队列 + 快照持久化 |
 | `intero/dream.py` | M5 夜间时钟：Dream 回放 + 策展 + 晋升门 |
 | `intero/mcp_server.py` | MCP server（memory_write/recall/status + add_intention/heartbeat_tick 五工具） |
+| `intero/daemon.py` | 主动搭话守护进程：常驻起搏 + 气泡/语音通知（Windows 原生零依赖） |
 | `bench/calibrate.py` | 三相位标定台（背记/抗噪/过期），冠军配置来源 |
 | `bench/CALIBRATION.md` | 标定实录（失败诊断 + 冻结值 + 探针实录 + M1.5 改道） |
 | `bench/scenarios.py` / `m2_benchmark.py` | M2 剧本生成器 + 三方对拍台 |
