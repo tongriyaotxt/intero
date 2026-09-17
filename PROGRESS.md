@@ -1,6 +1,6 @@
 # PROGRESS.md — intero 进度快照
 
-> 最近更新：2026-09-17 上午（**M0–M5 全部里程碑完成 + Kimi CLI 真机联调通过**）
+> 最近更新：2026-09-17 傍晚（**v0.1.0 已发布 GitHub**：https://github.com/tongriyaotxt/intero ）
 > 下次接续方式：对 agent 说"**继续 intero**"，它会读本文件 + `bench/CALIBRATION.md` + `bench/M2_REPORT.md` + `README.md` 恢复上下文并自动汇报进度。
 
 ## 当前状态：全部设计里程碑 ✅（M0+M1 / M1.5 / M2 / M3 / M4 / M5）
