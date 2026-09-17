@@ -34,6 +34,17 @@
 6. 已缓存模型跑实验务必 `HF_HUB_OFFLINE=1`（直连 huggingface.co 会卡死 HEAD 重试）
 7. .env 解析要剥行内注释（踩过 model 名带注释的坑）
 
+## 2026-09-17 下午：规模化攻坚（用户拍板"全部弄"，不部署只测试）
+
+- **服务化**：`service.py`（HTTP 只绑 127.0.0.1 + 大锁串行化）+ `client.py`（RemoteOrgan 瘦客户端）——daemon `--serve` 内嵌常驻服务，MCP 优先连服务、断了回退本地。实测 recall 47~140ms vs spawn 冷启动 ~15s（>100×）；8 线程并发写不丢（sqlite check_same_thread=False，由服务锁保护）
+- **纵向模拟（bench/longitudinal.py）**：DeepSeek 生成 351 planted（事实+改写提问对，5 类）+ 281 噪声，14 天双臂对拍。**震惊实测**：纯惊讶门控 hit@5 从 0.24 单调崩到 0.12（写入率 12%=召回天花板），rag 稳定 0.97+——M2 的"孤立事实小输"在生活规模下是惨败
+- **实体显著性门控（修复）**：`is_salient()`（用户自指正则）显著事实绕过惊讶门。复测 day6 hit@5 0.973 追平 rag（day14 全程见 LONGITUDINAL.md）
+- **意图四分类**：remind/followup/care/association（intents.py prompt v 扩展，type 校验回退）
+- **理睬反馈闭环**：record_delivery/_check_ack/urgency_multiplier——主动送达记账，600s 窗内用户响应=理睬；满 3 次后同类意图紧迫度乘子 0.5+理睬率（总被无视的话题自动闭嘴）
+- **tech-base 回写**：`24-intero工程实录-外挂双器官.md`（六条架构教训 + 与 OpenHuman 部件对应表，已提交 tech-base 689b4dd）；OpenHuman brain/README 登记 intero 为活胚胎（38b55f4）
+- 自启脚本 scripts/（只写不装，用户明示不永久部署）
+- 测试 54/54 绿
+
 ## 待用户追认/拍板的事项
 
 | # | 事项 | 背景 |

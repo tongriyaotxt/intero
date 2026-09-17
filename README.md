@@ -32,20 +32,28 @@ PYTHONPATH=. python -m intero.mcp_server   # MCP server（stdio，宿主可挂�
 
 ### 主动搭话守护进程（daemon）
 
-MCP 是被动应答（宿主调用才活）；`daemon` 是常驻起搏器——自己跳心跳，拍卖赢出的冲动**主动找你**：
+MCP 是被动应答（宿主调用才活）；`daemon` 是常驻起搏器——自己跳心跳，拍卖赢出的冲动**主动找你**，
+并内嵌常驻 HTTP 服务（`--serve`，只绑 127.0.0.1）让 MCP 瘦客户端毫秒级调用：
 
 ```bash
 cd intero
 INTERO_STORE=.intero/content.db HF_HUB_OFFLINE=1 PYTHONPATH=. \
-    .venv/Scripts/python.exe -m intero.daemon          # 气泡通知；加 --voice 语音播报
+    .venv/Scripts/python.exe -m intero.daemon --serve      # 气泡通知；加 --voice 语音播报
+# 或一键：scripts\start_daemon.bat（开机自启：手动运行 scripts\install_autostart.bat）
 ```
+
+服务化实测：recall 47~140ms vs spawn 冷启动 ~15s（>100×）；MCP 在服务不在时回退本地实例。
 
 送达路由：你在聊（ENGAGED，60 秒内有交互）→ 冲动留给对话内 recall 送达，不打扰；
 你离开（WATCH/DREAM）→ Windows 气泡（+可选 SAPI 语音）主动搭话。
 daemon 每拍前先 reload sqlite 快照（吸收 MCP 侧新意图），跳完即存——进程间只通过库通信。
 已实测（2026-09-17）：注册意图后 daemon 在 60 秒静默期结束的第一拍主动弹窗，送达即清不重复。
 进入 DREAM（休眠）的第一拍自动跑夜间周期：dream 回放/策展/晋升 + **意图自生**（LLM 通读库存
-事实，抽出到期事项自动注册提醒意图，kind="sprout"，可审计可去重）。也可 MCP 调 `dream_now` 手动触发。
+事实，按 remind/followup/care/association 四类萌发意图，可审计可去重）。也可 MCP 调 `dream_now` 手动触发。
+**理睬反馈闭环**：主动送达记账，10 分钟内用户响应记为理睬；同类意图满 3 次送达后，
+紧迫度乘子 = 0.5 + 理睬率——总被无视的话题自动闭嘴。
+**实体显著性门控**：关于用户的事实绕过惊讶门直接写（纵向模拟实测：纯惊讶门控在生活规模下
+hit@5 仅 0.12，写入率=召回天花板，见 bench/LONGITUDINAL.md）。
 
 `.kimi/mcp.json` 已配好（stdio，绝对路径，记忆持久化到 `.intero/content.db`）：
 

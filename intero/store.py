@@ -81,13 +81,14 @@ class ContentStore:
         return i
 
     def items(self) -> list[dict]:
-        """存活条目（含向量），M5 策展/晋升用。"""
+        """存活条目（含向量与时间戳），M5 策展/晋升/wiki 导出用。"""
         live = self._live_ids()
         return [
-            {"id": i, "text": r[0], "kind": r[1], "vec": self._vecs[self._ids.index(i)]}
+            {"id": i, "text": r[0], "kind": r[1], "ts": r[2],
+             "vec": self._vecs[self._ids.index(i)]}
             for i in self._ids
             if i in live and (r := self._db.execute(
-                "SELECT text, kind FROM items WHERE id=?", (i,)).fetchone())
+                "SELECT text, kind, ts FROM items WHERE id=?", (i,)).fetchone())
         ]
 
     def update_kind(self, item_id: int, kind: str) -> None:

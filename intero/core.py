@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 
 import numpy as np
@@ -21,6 +22,16 @@ from .intents import ReminderExtractor, best_available_extractor
 from .memory import TitansMemory
 from .normalize import Normalizer, best_available_normalizer
 from .store import ContentStore
+
+#: 用户显著性：事实是否关乎用户本人。纵向模拟（bench/LONGITUDINAL.md）实测：
+#: 纯惊讶分位数门控在生活规模下 hit@5 仅 0.12（写入率=召回天花板），
+#: 必须加“重不重要”这一维——个人记忆的第一近似就是“关于用户的必写”。
+USER_RE = re.compile(r"用户|我|咱|俺")
+
+
+def is_salient(text: str) -> bool:
+    """实体显著性 v1：含用户自指即显著（改写后的事实以“用户”开头，天然命中）。"""
+    return bool(USER_RE.search(text))
 
 
 class Intero:
@@ -162,7 +173,15 @@ class Intero:
 
         report = dream(self.mem, self.st, verbose=verbose)
         report["意图自生"] = self.derive_intentions()
+        report["wiki"] = self.export_wiki()
         return report
+
+    # ---- wiki 只读导出层（派生物，sqlite 仍是唯一事实源） ----
+
+    def export_wiki(self, out_dir: str = ".intero/wiki") -> int:
+        from .wiki import export_wiki
+
+        return export_wiki(self.st, self.hb.snapshot(), self._feedback(), out_dir)
 
     def add_intention(self, kind: str, payload: str, urgency: float = 0.5, ttl: float = 3600.0) -> dict:
         """注册一条意图（冲动）。心跳只裁决时机，说什么由 LLM 决定。"""
@@ -216,7 +235,8 @@ class Intero:
         written = 0
         for f in facts:
             v = self._center(self.enc.encode([f])[0])
-            if self.mem.write(v, v, redundancy=self.st.redundancy(v)):
+            # 显著事实绕过惊讶门（显著 ∨ 惊讶 = 写；两者皆无 = 省）
+            if self.mem.write(v, v, redundancy=self.st.redundancy(v), force=is_salient(f)):
                 self.st.add(f, v, kind=kind)
                 written += 1
             self._prewrite.append(self.mem.last_prewrite_mse or 0.0)
