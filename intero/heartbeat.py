@@ -89,6 +89,7 @@ class Heartbeat:
         self._last_interaction = self._now()
         self._since_action = self.refractory_ticks   # 启动即出反拗期
         self.intentions: list[Intention] = []
+        self.pending: list[Intention] = []   # 待说事项：赢了拍卖的冲动，等下次见面说
         self.log: list[AuctionResult] = []
 
     # ---- 状态 ----
@@ -148,6 +149,7 @@ class Heartbeat:
         acted = best is not None and best_bid > silence_bid
         if acted:
             self.intentions.remove(best)
+            self.pending.append(best)        # 冲动排队，见面先说（宿主无法被主动推消息）
             self._since_action = 0
             winner = best.kind
         else:
@@ -166,3 +168,34 @@ class Heartbeat:
     def run(self, ticks: int) -> list[AuctionResult]:
         """连跳 N 下（仿真用；真实部署由事件循环按 self.rate 间隔调用 tick）。"""
         return [self.tick() for _ in range(ticks)]
+
+    # ---- 送达 ----
+
+    def deliver_pending(self) -> list[Intention]:
+        """取出并清空待说事项（已呈现给宿主 = 已送达）。"""
+        out, self.pending = self.pending, []
+        return out
+
+    # ---- 快照/恢复（MCP 宿主 spawn-per-call，状态必须落库） ----
+
+    def snapshot(self) -> dict:
+        def ser(it: Intention) -> dict:
+            return {"kind": it.kind, "payload": it.payload, "urgency": it.urgency,
+                    "ttl": it.ttl, "created_at": it.created_at}
+        return {
+            "state": self.state.value,
+            "last_interaction": self._last_interaction,
+            "since_action": self._since_action,
+            "intentions": [ser(i) for i in self.intentions],
+            "pending": [ser(i) for i in self.pending],
+        }
+
+    def restore(self, d: dict) -> None:
+        def de(s: dict) -> Intention:
+            return Intention(kind=s["kind"], payload=s["payload"], urgency=s["urgency"],
+                             ttl=s["ttl"], created_at=s["created_at"])
+        self.state = HeartState(d.get("state", "watch"))
+        self._last_interaction = d.get("last_interaction", self._now())
+        self._since_action = d.get("since_action", self.refractory_ticks)
+        self.intentions = [de(s) for s in d.get("intentions", [])]
+        self.pending = [de(s) for s in d.get("pending", [])]

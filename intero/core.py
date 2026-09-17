@@ -9,12 +9,14 @@ MCP server、prompt 注入、demo 都走这里，不再各自拼零件。
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
 
 import numpy as np
 
 from .encoder import Encoder, best_available
+from .heartbeat import Heartbeat, Intention
 from .memory import TitansMemory
 from .normalize import Normalizer, best_available_normalizer
 from .store import ContentStore
@@ -37,6 +39,7 @@ class Intero:
         lam_max: float = 0.7,
         mem_hidden: int = 4096,
         mem_depth: int = 3,
+        heartbeat: Heartbeat | None = None,
     ) -> None:
         self.enc = encoder or best_available()
         self.norm = normalizer or best_available_normalizer()
@@ -51,6 +54,32 @@ class Intero:
         self.n_in = 0
         self.mu = np.zeros(self.enc.dim, dtype=np.float32)
         self._prewrite: list[float] = []
+        # 心跳器官：状态随 sqlite 持久化（MCP 宿主 spawn-per-call，进程是短命的）
+        self.hb = heartbeat or Heartbeat()
+        snap = self.st.get_meta_text("heartbeat")
+        if snap:
+            self.hb.restore(json.loads(snap))
+
+    # ---- 心跳：每次交互 = 一次交互记录 + 跳一拍（请求驱动宿主的懒惰心跳） ----
+
+    def _beat(self) -> None:
+        self.hb.interact()
+        self.hb.tick()
+        self.st.set_meta_text("heartbeat", json.dumps(self.hb.snapshot()))
+
+    def add_intention(self, kind: str, payload: str, urgency: float = 0.5, ttl: float = 3600.0) -> dict:
+        """注册一条意图（冲动）。心跳只裁决时机，说什么由 LLM 决定。"""
+        self._beat()
+        self.hb.add_intention(Intention(kind=kind, payload=payload, urgency=urgency, ttl=ttl))
+        self.st.set_meta_text("heartbeat", json.dumps(self.hb.snapshot()))
+        return {"registered": kind, "urgency": urgency, "ttl": ttl, "队列": len(self.hb.intentions)}
+
+    def tick(self) -> dict:
+        """显式跳一拍（宿主每轮对话结束可调）。返回拍卖结果。"""
+        self._beat()
+        r = self.hb.log[-1]
+        return {"赢者": r.winner, "行动": r.acted, "状态": self.hb.state.value,
+                "待说": len(self.hb.pending), "意图队列": len(self.hb.intentions)}
 
     # ---- 向量预处理（与 __main__.py 相同的中心化，破嵌入锥形坍缩） ----
 
@@ -64,6 +93,7 @@ class Intero:
 
     def ingest(self, text: str, kind: str = "fact", normalize: bool = True) -> dict:
         """写入一条（可能先归一化）。返回 {facts, written}。"""
+        self._beat()
         facts = self.norm.normalize(text) if normalize else [text]
         if not facts:
             facts = [text]
@@ -88,14 +118,25 @@ class Intero:
         """prompt 注入装配：检索 → 记忆块（可直接拼进 system/user prompt）。
 
         consolidated 优先，dedup/noise 不上墙，conflict 标注供 LLM 裁决。
+        待说事项（心跳拍卖赢出的主动冲动）置顶呈现并视为已送达。
         """
         from .inject import assemble
 
-        return assemble(self.retrieve(query, topk=topk * 2), topk=topk, budget_chars=budget_chars)
+        self._beat()
+        block = assemble(self.retrieve(query, topk=topk * 2), topk=topk, budget_chars=budget_chars)
+        pending = self.hb.deliver_pending()
+        if pending:
+            self.st.set_meta_text("heartbeat", json.dumps(self.hb.snapshot()))
+            items = "\n".join(f"- [{p.kind}] {p.payload}" for p in pending)
+            head = ("【待说事项】以下是你不在场时记忆器官决定要主动提起的事，"
+                    "请在回答用户前先自然地处理：\n" + items)
+            return head + ("\n\n" + block if block else "")
+        return block
 
     # ---- 状态 ----
 
     def status(self) -> dict:
+        self._beat()
         return {
             "摄入": self.n_in,
             "写入": self.mem.writes,
@@ -104,4 +145,7 @@ class Intero:
             "回滚": self.mem.rollbacks,
             "encoder": self.enc.name,
             "normalizer": self.norm.name,
+            "心跳": self.hb.state.value,
+            "意图": len(self.hb.intentions),
+            "待说": len(self.hb.pending),
         }

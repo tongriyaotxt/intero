@@ -5,7 +5,7 @@
 
 ## 当前状态：全部设计里程碑 ✅（M0+M1 / M1.5 / M2 / M3 / M4 / M5）
 
-- 黄金测试 **24/24 绿**（记忆 9 + 心跳 7 + 夜间时钟 3 + 注入/门面/MCP 5），`python -m compileall` 全过
+- 黄金测试 **29/29 绿**（记忆 9 + 心跳 7 + 夜间时钟 3 + 注入/门面/MCP 5 + 主动闭环 5），`python -m compileall` 全过
 - M1.5（改道完成）：LLM 归一化主线（`normalize.py`，api/local 双后端+缓存+透传兜底）+ 干净句微调加固（`bench/results/bge-neg-ft`，留出 test 排序 100%、margin_mean 0.247）；两档验收口径已公开重校准（CALIBRATION.md，agent 自主决策**待用户追认**）
 - M2：三种子对拍报告 `bench/M2_REPORT.md`——写入省~70% ✓ / 过期占比 0.13~0.38 vs 1.00 ✓ / 组合事实超预期全胜 ✓ / flashbulb 打平 / 孤立事实召回减半（构造性，幅度超预测，记录在案）
 - M3 心跳（`heartbeat.py`）：三态变心率 + 意图 TTL 调度 + 主动性拍卖（沉默有底价）+ 反拗期
@@ -19,7 +19,8 @@
 - **修了两个真 bug**（联调才暴露，测试全覆盖不到）：
   1. `Intero` 默认库存 tempfile——MCP 场景重启即失忆 → 新增 `INTERO_STORE` 环境变量持久化（core.py）
   2. kimi 对并行工具调用 **spawn 多个 server 进程**，sidecar `.vecs.json` 竞态丢数据（实测 2 条只剩 1 条）→ store.py 持久化重构：向量 BLOB 与原文**同事务写入 sqlite**，λ 入 meta 表，删除 save()/sidecar；4 进程并发写入回归测试通过
-- 已提交：`c91ef21`（M1.5–M5）+ 本次联调修复
+- **主动性闭环（用户拍板"行"后接通，2026-09-17 上午）**：心跳粘进 Intero 门面 + MCP 新增 add_intention/heartbeat_tick + 心跳快照落 sqlite meta 表 + "冲动排队见面先说"送达语义（recall 置顶【待说事项】，送达即清）。语义诚实边界：宿主无法被主动推消息，主动性=下次见面时优先提起。新增 tests/test_proactive.py 5 个测试（送达一次/沉默赢/TTL 不行动/意图跨进程/待说跨进程），**29/29 绿**。真机三会话演示：A 注册提醒 → 35s 后 B 收到待说并自然说出提醒 → C 不重复。
+- 已提交：`c91ef21`（M1.5–M5）+ `8c8e173`（联调修复）+ 本次主动性接通
 
 ## 关键实测结论（勿重复劳动）
 
@@ -52,7 +53,7 @@
 
 ```bash
 cd D:\项目\micromind\intero
-python -m unittest discover tests     # 应 24/24 OK
+python -m unittest discover tests     # 应 29/29 OK
 python -m intero                      # 写入率应 ≈29%
 ```
 

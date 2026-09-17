@@ -52,6 +52,18 @@ class ContentStore:
         )
         self._db.commit()
 
+    def get_meta_text(self, key: str) -> str | None:
+        """通用 KV（心跳快照等）；sqlite 动态类型，REAL 列可存 TEXT。"""
+        row = self._db.execute("SELECT v FROM meta WHERE k=?", (key,)).fetchone()
+        return str(row[0]) if row else None
+
+    def set_meta_text(self, key: str, value: str) -> None:
+        self._db.execute(
+            "INSERT INTO meta(k, v) VALUES(?, ?) "
+            "ON CONFLICT(k) DO UPDATE SET v=excluded.v", (key, value)
+        )
+        self._db.commit()
+
     # ---- 写入 ----
 
     def add(self, text: str, vec: np.ndarray, kind: str = "fact") -> int:

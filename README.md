@@ -36,12 +36,20 @@ PYTHONPATH=. python -m intero.mcp_server   # MCP server（stdio，宿主可挂�
 
 ```bash
 cd intero
-kimi --mcp-config-file .kimi/mcp.json   # 交互模式；工具：memory_write / memory_recall / memory_status
+kimi --mcp-config-file .kimi/mcp.json   # 交互模式；工具：memory_write / memory_recall / memory_status / add_intention / heartbeat_tick
 ```
 
 已实测跨会话闭环（2026-09-17）：会话A 并行写入两条事实 → 会话B（新进程）正确召回。
+已实测主动性闭环（2026-09-17）：会话A 注册提醒意图 → 35 秒后会话B 的 recall 顶部收到
+【待说事项】→ 会话C 已清除不重复。工具全表：memory_write / memory_recall / memory_status /
+add_intention / heartbeat_tick。
 **注意**：kimi 对并行工具调用会 spawn 多个 server 进程，存储层已改为 sqlite 单文件
 （向量作 BLOB 与原文同事务写入）以抗竞态——不要用 sidecar 文件存向量。
+心跳快照（意图/待说/反拗）存在同一 sqlite 的 meta 表，跨进程不丢。
+
+**主动性语义（请求驱动宿主下的诚实形态）**：冲动排队，见面先说。每次工具调用 =
+interact() + tick()（懒惰心跳，TTL/状态迁移走墙钟）；拍卖赢出的意图进 pending，
+下次 recall 置顶送达并清除。宿主无法被主动推消息——这是当前架构的边界，不是 bug。
 
 ## 代码地图
 
@@ -54,9 +62,9 @@ kimi --mcp-config-file .kimi/mcp.json   # 交互模式；工具：memory_write /
 | `intero/normalize.py` | 写入前 LLM 归一化（api/local 双后端 + 磁盘缓存 + 透传兜底） |
 | `intero/core.py` | Intero 门面：记忆器官整机（M4 接入载体） |
 | `intero/inject.py` | prompt 注入装配（consolidated 优先 / conflict 标注 / 预算截断） |
-| `intero/heartbeat.py` | M3 心跳：三态变心率 + 意图调度 + 主动性拍卖 + 反拗期 |
+| `intero/heartbeat.py` | M3 心跳：三态变心率 + 意图调度 + 主动性拍卖 + 反拗期 + 待说队列 + 快照持久化 |
 | `intero/dream.py` | M5 夜间时钟：Dream 回放 + 策展 + 晋升门 |
-| `intero/mcp_server.py` | MCP server（memory_write/recall/status 三工具） |
+| `intero/mcp_server.py` | MCP server（memory_write/recall/status + add_intention/heartbeat_tick 五工具） |
 | `bench/calibrate.py` | 三相位标定台（背记/抗噪/过期），冠军配置来源 |
 | `bench/CALIBRATION.md` | 标定实录（失败诊断 + 冻结值 + 探针实录 + M1.5 改道） |
 | `bench/scenarios.py` / `m2_benchmark.py` | M2 剧本生成器 + 三方对拍台 |
