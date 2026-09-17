@@ -1,11 +1,13 @@
 # PROGRESS.md — intero 进度快照
 
-> 最近更新：2026-09-17 傍晚（**v0.1.0 已发布 GitHub**：https://github.com/tongriyaotxt/intero ）
-> 下次接续方式：对 agent 说"**继续 intero**"，它会读本文件 + `bench/CALIBRATION.md` + `bench/M2_REPORT.md` + `README.md` 恢复上下文并自动汇报进度。
+> 最近更新：2026-09-17 晚（**v0.1.0 已发布 GitHub**：https://github.com/tongriyaotxt/intero ）
+> 下次接续方式：对 agent 说"**继续 intero**"，它会读本文件 + `bench/CALIBRATION.md` + `bench/M2_REPORT.md` + `bench/LONGITUDINAL.md` + `README.md` 恢复上下文并自动汇报进度。
+> 仓库：git@github.com:tongriyaotxt/intero.git（**本机 github.com:443 被重置，push 走 SSH**）
+> 发布配置：双语 README / CI（windows-latest pytest）/ Apache-2.0 / topics×8；`.env` 从未入库，历史扫描无 key
 
-## 当前状态：全部设计里程碑 ✅（M0+M1 / M1.5 / M2 / M3 / M4 / M5）
+## 当前状态：v0.1.0 公开发布 ✅（73/73 测试绿）
 
-- 黄金测试 **39/39 绿**（记忆 9 + 心跳 7 + 夜间时钟 3 + 注入/门面/MCP 5 + 主动闭环 5 + daemon 4 + 意图自生 6），`python -m compileall` 全过
+- 黄金测试 **73/73 绿**（记忆 9 + 心跳 7 + 夜间时钟 3 + 注入/门面/MCP 5 + 主动闭环 5 + daemon 4 + 意图自生 6 + 服务化 6 + 反馈 7 + 显著性 3 + light 4 + 内态/润色 7 + 线头 5），`python -m compileall` 全过
 - M1.5（改道完成）：LLM 归一化主线（`normalize.py`，api/local 双后端+缓存+透传兜底）+ 干净句微调加固（`bench/results/bge-neg-ft`，留出 test 排序 100%、margin_mean 0.247）；两档验收口径已公开重校准（CALIBRATION.md，agent 自主决策**待用户追认**）
 - M2：三种子对拍报告 `bench/M2_REPORT.md`——写入省~70% ✓ / 过期占比 0.13~0.38 vs 1.00 ✓ / 组合事实超预期全胜 ✓ / flashbulb 打平 / 孤立事实召回减半（构造性，幅度超预测，记录在案）
 - M3 心跳（`heartbeat.py`）：三态变心率 + 意图 TTL 调度 + 主动性拍卖（沉默有底价）+ 反拗期
@@ -75,7 +77,12 @@
 
 | # | 事项 | 背景 |
 |---|---|---|
-| 1 | **两档探针验收口径**（管线档 rank100%+mean0.15 / 裸 encoder 档 minmax>0.15 保留追求） | agent 夜里自主拍的板，CALIBRATION.md 有公开记录 |
+| 1 | **两档探针验收口径**（管线档 rank100%+mean0.15 / 裸 encoder 档 minmax>0.15 保留追求） | agent 自主拍的板，CALIBRATION.md 有公开记录 |
+| 2 | 孤立事实召回减半 | **已修复**（显著性门控，纵向 0.12→0.98，LONGITUDINAL.md） |
+| 3 | Titans 必要性 | **已拍板降级**：light 为默认，full 保留实验层（λ≡0 负面结果） |
+| 4 | GitHub 发布 | **已完成** v0.1.0 |
+| 5 | wiki 试水反馈→是否升主存储 | 用几天再定 |
+| 6 | 日常真实使用 | 入口 scripts\chat.bat |
 | 2 | M2 孤立事实召回减半的缓解路线优先级（门控加实体显著性 / dream 补写 / 接受） | M2_REPORT.md 讨论节 |
 | 3 | 是否引入写入路径 LLM judge（encoder=召回/judge=精确） | 非原设计，架构决策记录 |
 
@@ -92,11 +99,11 @@
 
 ```bash
 cd D:\项目\micromind\intero
-python -m unittest discover tests     # 应 39/39 OK
+python -m unittest discover tests     # 应 73/73 OK
 python -m intero                      # 写入率应 ≈29%
 ```
 
 ## 未提交事项
 
-- 已 commit 两笔：`7ec1665`（M0+M1）→ `c91ef21`（M1.5–M5）→ 联调修复（本文件更新时提交）；**无远程仓库**，等用户决定是否推送
+- 无。全部已提交并推送 GitHub（SSH）。本地 `.env`（含 API key）永不入库。
 - 微调产物 `bench/results/bge-neg-ft/` 在 bench/results/（已 gitignore）
