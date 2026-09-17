@@ -1,6 +1,6 @@
 # PROGRESS.md — intero 进度快照
 
-> 最近更新：2026-09-17 凌晨（**M0–M5 全部里程碑完成**）
+> 最近更新：2026-09-17 上午（**M0–M5 全部里程碑完成 + Kimi CLI 真机联调通过**）
 > 下次接续方式：对 agent 说"**继续 intero**"，它会读本文件 + `bench/CALIBRATION.md` + `bench/M2_REPORT.md` + `README.md` 恢复上下文并自动汇报进度。
 
 ## 当前状态：全部设计里程碑 ✅（M0+M1 / M1.5 / M2 / M3 / M4 / M5）
@@ -11,6 +11,15 @@
 - M3 心跳（`heartbeat.py`）：三态变心率 + 意图 TTL 调度 + 主动性拍卖（沉默有底价）+ 反拗期
 - M4 接入（`core.py` 门面 + `inject.py` 装配 + `mcp_server.py`，mcp 1.x/2.x 兼容，stdio 可挂宿主）
 - M5 夜间时钟（`dream.py`）：Dream 强制回放 + 去重/矛盾策展 + 晋升门 + 健康线
+
+## 真机联调（2026-09-17 上午，用户拍板接入 Kimi CLI）
+
+- **接入方式**：项目级 `.kimi/mcp.json`（stdio，绝对路径，env 注入 `INTERO_STORE=.intero/content.db` + `HF_HUB_OFFLINE=1`）；启动：`cd intero && kimi --mcp-config-file .kimi/mcp.json`
+- **跨会话闭环实测通过**：会话A 并行写入两条事实（DeepSeek 归一化各 1 条）→ 会话B（全新进程）库存 2、两条事实按相关度正确置顶召回
+- **修了两个真 bug**（联调才暴露，测试全覆盖不到）：
+  1. `Intero` 默认库存 tempfile——MCP 场景重启即失忆 → 新增 `INTERO_STORE` 环境变量持久化（core.py）
+  2. kimi 对并行工具调用 **spawn 多个 server 进程**，sidecar `.vecs.json` 竞态丢数据（实测 2 条只剩 1 条）→ store.py 持久化重构：向量 BLOB 与原文**同事务写入 sqlite**，λ 入 meta 表，删除 save()/sidecar；4 进程并发写入回归测试通过
+- 已提交：`c91ef21`（M1.5–M5）+ 本次联调修复
 
 ## 关键实测结论（勿重复劳动）
 
@@ -34,7 +43,7 @@
 
 | # | 任务 | 入口 |
 |---|---|---|
-| 1 | 端到端真机联调：MCP server 挂真实宿主（Claude/Kimi），真实对话流写入+召回 | `PYTHONPATH=. python -m intero.mcp_server` |
+| 1 | ~~端到端真机联调~~ ✅ 已完成（2026-09-17，见上节）；后续可在日常使用中观察 | `.kimi/mcp.json` |
 | 2 | 心跳×器官联动：DREAM 态 tick 触发 dream()、WATCH 态意图来自记忆（如到期提醒） | heartbeat.py + dream.py 已各自就绪 |
 | 3 | 生产配置全量标定（dim=768/hidden=4096 只做过冒烟） | bench/calibrate.py |
 | 4 | fullctx 臂加"迷失中段"模拟、过期相位补标定阈值 | M2_REPORT.md 讨论节 |
@@ -49,5 +58,5 @@ python -m intero                      # 写入率应 ≈29%
 
 ## 未提交事项
 
-- 本项目已 git init（2026-09-15 用户操作）；M1.5–M5 全部新增代码（normalize/core/inject/heartbeat/dream/mcp_server + bench 实验组 + tests×3）与文档（CALIBRATION/M2_REPORT/README/本文件）**均未 commit**，等用户决定是否建远程仓库
+- 已 commit 两笔：`7ec1665`（M0+M1）→ `c91ef21`（M1.5–M5）→ 联调修复（本文件更新时提交）；**无远程仓库**，等用户决定是否推送
 - 微调产物 `bench/results/bge-neg-ft/` 在 bench/results/（已 gitignore）

@@ -41,7 +41,12 @@ class Intero:
         self.enc = encoder or best_available()
         self.norm = normalizer or best_available_normalizer()
         self.mem = memory or TitansMemory(dim=self.enc.dim, hidden=mem_hidden, depth=mem_depth, seed=0)
-        path = store_path or os.path.join(tempfile.mkdtemp(prefix="intero_"), "content.db")
+        # 优先级：显式参数 > 环境变量 INTERO_STORE（MCP/常驻场景持久化）> 临时目录（测试隔离）
+        path = (
+            store_path
+            or os.environ.get("INTERO_STORE")
+            or os.path.join(tempfile.mkdtemp(prefix="intero_"), "content.db")
+        )
         self.st = ContentStore(path, dim=self.enc.dim, lam_max=lam_max)
         self.n_in = 0
         self.mu = np.zeros(self.enc.dim, dtype=np.float32)

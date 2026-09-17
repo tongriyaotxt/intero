@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "intero-memory": {
+      "command": "D:\\项目\\micromind\\intero\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "intero.mcp_server"],
+      "env": {
+        "PYTHONPATH": "D:\\项目\\micromind\\intero",
+        "PYTHONIOENCODING": "utf-8",
+        "HF_HUB_OFFLINE": "1",
+        "INTERO_STORE": "D:\\项目\\micromind\\intero\\.intero\\content.db"
+      }
+    }
+  }
+}

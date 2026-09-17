@@ -30,6 +30,19 @@ python -m intero                  # 冒烟 demo：100事实+300噪声→10问
 PYTHONPATH=. python -m intero.mcp_server   # MCP server（stdio，宿主可挂）
 ```
 
+### 接入 Kimi CLI（项目级，只在本目录生效）
+
+`.kimi/mcp.json` 已配好（stdio，绝对路径，记忆持久化到 `.intero/content.db`）：
+
+```bash
+cd intero
+kimi --mcp-config-file .kimi/mcp.json   # 交互模式；工具：memory_write / memory_recall / memory_status
+```
+
+已实测跨会话闭环（2026-09-17）：会话A 并行写入两条事实 → 会话B（新进程）正确召回。
+**注意**：kimi 对并行工具调用会 spawn 多个 server 进程，存储层已改为 sqlite 单文件
+（向量作 BLOB 与原文同事务写入）以抗竞态——不要用 sidecar 文件存向量。
+
 ## 代码地图
 
 | 文件 | 职责 |

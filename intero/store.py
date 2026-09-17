@@ -5,12 +5,14 @@
     score_i = λ·cos(M(q), v_i) + (1−λ)·cos(q, v_i)
 λ 初始 0（=朴素 RAG，天然对照组），随自重构误差下降而爬升——
 "参数化泛化体现在路由"从诚实标注变成可测量项。
+
+持久化：向量以 BLOB 与原文同事务写入 sqlite（λ 存 meta 表）。
+不用 sidecar 文件——MCP 宿主可能并行 spawn 多个 server 进程，
+sqlite 的写锁是唯一的并发真理（sidecar JSON 竞态丢数据的教训）。
 """
 
 from __future__ import annotations
 
-import json
-import os
 import sqlite3
 import time
 
@@ -22,27 +24,46 @@ class ContentStore:
         self.path = path
         self.dim = dim
         self.lam_max = lam_max
-        self.lam = 0.0                 # 信任权重：冷启动 = 0（纯 RAG）
         self._db = sqlite3.connect(path)
         self._db.execute(
             "CREATE TABLE IF NOT EXISTS items("
-            "id INTEGER PRIMARY KEY, text TEXT, kind TEXT, ts REAL, deleted INTEGER DEFAULT 0)"
+            "id INTEGER PRIMARY KEY, text TEXT, kind TEXT, ts REAL,"
+            " deleted INTEGER DEFAULT 0, vec BLOB)"
         )
+        self._db.execute("CREATE TABLE IF NOT EXISTS meta(k TEXT PRIMARY KEY, v REAL)")
+        row = self._db.execute("SELECT v FROM meta WHERE k='lam'").fetchone()
+        self.lam = float(row[0]) if row else 0.0   # 信任权重：冷启动 = 0（纯 RAG）
         self._vecs: list[np.ndarray] = []   # 与 id 顺序对齐（含已删位，查询时屏蔽）
         self._ids: list[int] = []
-        self._vec_path = path + ".vecs.json"
-        self._load_vecs()
+        self._load()
+
+    def _load(self) -> None:
+        """从 sqlite 全量装载（新进程/重启后恢复记忆）。"""
+        for i, blob in self._db.execute("SELECT id, vec FROM items ORDER BY id"):
+            self._ids.append(i)
+            v = np.frombuffer(blob, dtype=np.float32) if blob else np.zeros(self.dim, np.float32)
+            self._vecs.append(v.copy())
+
+    def _set_lam(self, value: float) -> None:
+        self.lam = value
+        self._db.execute(
+            "INSERT INTO meta(k, v) VALUES('lam', ?) "
+            "ON CONFLICT(k) DO UPDATE SET v=excluded.v", (value,)
+        )
+        self._db.commit()
 
     # ---- 写入 ----
 
     def add(self, text: str, vec: np.ndarray, kind: str = "fact") -> int:
+        v = np.asarray(vec, dtype=np.float32)
         cur = self._db.execute(
-            "INSERT INTO items(text, kind, ts) VALUES (?,?,?)", (text, kind, time.time())
+            "INSERT INTO items(text, kind, ts, vec) VALUES (?,?,?,?)",
+            (text, kind, time.time(), v.tobytes()),
         )
         i = cur.lastrowid
-        self._db.commit()
+        self._db.commit()   # 原文+向量同事务落盘：宿主随时断开/并行 spawn 都不丢
         self._ids.append(i)
-        self._vecs.append(np.asarray(vec, dtype=np.float32))
+        self._vecs.append(v)
         return i
 
     def items(self) -> list[dict]:
@@ -61,10 +82,14 @@ class ContentStore:
 
     def delete(self, item_id: int) -> None:
         """删除 = 原文抹除 + 向量屏蔽（crypto-shredding 的轻量版：数据本体不可读）。"""
-        self._db.execute("UPDATE items SET text='', deleted=1 WHERE id=?", (item_id,))
+        zeros = np.zeros(self.dim, dtype=np.float32)
+        self._db.execute(
+            "UPDATE items SET text='', deleted=1, vec=? WHERE id=?",
+            (zeros.tobytes(), item_id),
+        )
         self._db.commit()
         if item_id in self._ids:
-            self._vecs[self._ids.index(item_id)] = np.zeros(self.dim, dtype=np.float32)
+            self._vecs[self._ids.index(item_id)] = zeros
 
     def redundancy(self, vec: np.ndarray, window: int = 32) -> float:
         """与最近 window 条的最大余弦（喂给 α 门的冗余特征）。"""
@@ -110,24 +135,10 @@ class ContentStore:
         """
         if prewrite_mse is None or chance_mse <= 0:
             return self.lam
-        self.lam = float(np.clip(1.0 - prewrite_mse / chance_mse, 0.0, self.lam_max))
+        self._set_lam(float(np.clip(1.0 - prewrite_mse / chance_mse, 0.0, self.lam_max)))
         return self.lam
 
-    # ---- 持久化 ----
-
-    def save(self) -> None:
-        with open(self._vec_path, "w", encoding="utf-8") as f:
-            json.dump({"ids": self._ids, "lam": self.lam,
-                       "vecs": [v.tolist() for v in self._vecs]}, f)
-
-    def _load_vecs(self) -> None:
-        if not os.path.exists(self._vec_path):
-            return
-        with open(self._vec_path, encoding="utf-8") as f:
-            d = json.load(f)
-        self._ids = d["ids"]
-        self._vecs = [np.asarray(v, dtype=np.float32) for v in d["vecs"]]
-        self.lam = d.get("lam", 0.0)
+    # ---- 生命周期 ----
 
     def __len__(self) -> int:
         return sum(1 for i in self._ids if i in self._live_ids())

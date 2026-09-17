@@ -8,3 +8,4 @@ bench/results/
 .env
 .normalize_cache.json
 checkpoints/
+.intero/
