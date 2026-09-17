@@ -67,7 +67,7 @@ class TestIntentionSprout(unittest.TestCase):
         r = organ.derive_intentions()
         self.assertEqual(r["萌发"], 1)
         it = organ.hb.intentions[0]
-        self.assertEqual(it.kind, "sprout")
+        self.assertTrue(it.kind.startswith("sprout"))
         self.assertAlmostEqual(it.ttl, 7200, delta=60)
         self.assertEqual(it.urgency, 0.9)
 
@@ -106,7 +106,7 @@ class TestIntentionSprout(unittest.TestCase):
         sent = []
         run(organ, once=True, notify_fn=lambda i, voice=False: sent.append(i.payload),
             out=io.StringIO())
-        self.assertTrue(any(it.kind == "sprout" for it in organ.hb.intentions))
+        self.assertTrue(any(it.kind.startswith("sprout") for it in organ.hb.intentions))
 
 
 if __name__ == "__main__":

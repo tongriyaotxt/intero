@@ -24,11 +24,14 @@ from .normalize import _load_dotenv
 PROMPT_VERSION = "v1"
 
 PROMPT_TEMPLATE = """今天是 {today}。下面是关于用户的事实记忆。
-请找出其中"有明确时间、到期值得主动提醒用户"的事项（约会/截止/计划/日程/承诺）。
+请从中萌发值得主动提起的事项，分四类：
+  remind      有明确时间、到期要提醒的事（约会/截止/计划/承诺）
+  followup    看起来没聊完/没收尾、值得追问进展的话题
+  care        涉及用户身心状态、值得稍后关心的事（生病/情绪/大事前后）
+  association 新事实与旧事实之间的有趣联结，值得主动分享
 规则：
-1. 只输出 JSON 数组，每项：{{"payload": "提醒时要说的话（简短口语）", "deadline": "YYYY-MM-DDTHH:MM 或 null", "urgency": 0到1}};
-2. 无时间敏感事项就输出 []；惯例性日程（每周X做某事）deadline 给 null；
-3. 已经过期的事项跳过；不要解释。
+1. 只输出 JSON 数组，每项：{{"type": "四类之一", "payload": "提醒/追问/关心/分享时要说的话（简短口语）", "deadline": "YYYY-MM-DDTHH:MM 或 null", "urgency": 0到1}};
+2. 没有值得萌发的就输出 []；已经过期的事项跳过；不要解释。
 
 事实记忆：
 {facts}
@@ -38,8 +41,11 @@ PROMPT_TEMPLATE = """今天是 {today}。下面是关于用户的事实记忆。
 _ARRAY_RE = re.compile(r"\[.*\]", re.S)
 
 
+INTENT_TYPES = {"remind", "followup", "care", "association"}
+
+
 def parse_reminders(response: str) -> list[dict]:
-    """从 LLM 响应抠 JSON 数组；每项规范化为 {payload, deadline_ts|None, urgency}。"""
+    """从 LLM 响应抠 JSON 数组；每项规范化为 {type, payload, deadline_ts|None, urgency}。"""
     m = _ARRAY_RE.search(response)
     if not m:
         return []
@@ -62,7 +68,9 @@ def parse_reminders(response: str) -> list[dict]:
             urgency = float(r.get("urgency", 0.8))
         except (TypeError, ValueError):
             urgency = 0.8
+        itype = str(r.get("type", "remind"))
         out.append({
+            "type": itype if itype in INTENT_TYPES else "remind",
             "payload": str(r["payload"]).strip(),
             "deadline_ts": dl_ts,
             "urgency": max(0.0, min(1.0, urgency)),

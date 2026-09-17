@@ -61,9 +61,59 @@ class Intero:
         self.reload_heartbeat()
         self.reminder_extractor = extractor or best_available_extractor()
 
+    # ---- 理睬反馈闭环：搭话有没有被理，学进紧迫度乘子 ----
+
+    ACK_WINDOW = 600.0       # 主动送达后 10 分钟内有交互 = 被理睬
+    FEEDBACK_MIN_N = 3       # 至少 3 次送达后才开始用学习到的乘子（先验期不惩罚）
+
+    def _feedback(self) -> dict:
+        return json.loads(self.st.get_meta_text("intent_feedback") or "{}")
+
+    def _save_feedback(self, fb: dict) -> None:
+        self.st.set_meta_text("intent_feedback", json.dumps(fb))
+
+    def urgency_multiplier(self, kind: str) -> float:
+        """按历史理睬率调未来同类意图的紧迫度：0.5（总被无视）~ 1.5（总被理睬）。"""
+        s = self._feedback().get(kind)
+        if not s or s["delivered"] < self.FEEDBACK_MIN_N:
+            return 1.0
+        return 0.5 + s["acked"] / s["delivered"]
+
+    def record_delivery(self, kinds: list[str], proactive: bool) -> None:
+        """记录一次送达。proactive=True（daemon 弹窗）时留下待理睬标记，
+        下次用户交互在 ACK_WINDOW 内到达即记为被理睬；对话内送达直接算理睬。"""
+        fb = self._feedback()
+        for k in kinds:
+            s = fb.setdefault(k, {"delivered": 0, "acked": 0})
+            s["delivered"] += 1
+            if not proactive:
+                s["acked"] += 1
+        self._save_feedback(fb)
+        if proactive:
+            import time as _t
+            self.st.set_meta_text("last_proactive",
+                                  json.dumps({"ts": _t.time(), "kinds": kinds}))
+
+    def _check_ack(self) -> None:
+        import time as _t
+
+        raw = self.st.get_meta_text("last_proactive")
+        if not raw:
+            return
+        marker = json.loads(raw)
+        self.st.set_meta_text("last_proactive", "")
+        if _t.time() - marker["ts"] > self.ACK_WINDOW:
+            return
+        fb = self._feedback()
+        for k in marker["kinds"]:
+            if k in fb:
+                fb[k]["acked"] += 1
+        self._save_feedback(fb)
+
     # ---- 心跳：每次交互 = 一次交互记录 + 跳一拍（请求驱动宿主的懒惰心跳） ----
 
     def _beat(self) -> None:
+        self._check_ack()
         self.hb.interact()
         self.hb.tick()
         self.save_heartbeat()
@@ -94,8 +144,10 @@ class Intero:
                     continue                    # 已过期不萌发
             else:
                 ttl = 6 * 3600.0                # 无死线：默认半天时效
-            self.hb.add_intention(Intention(
-                kind="sprout", payload=payload, urgency=r["urgency"], ttl=ttl))
+            kind = f"sprout_{r.get('type', 'remind')}"
+            urgency = min(1.0, r["urgency"] * self.urgency_multiplier(kind))
+            self.hb.add_intention(Intention(kind=kind, payload=payload,
+                                            urgency=urgency, ttl=ttl))
             known.add(payload)
             n += 1
         seen |= {it["id"] for it in cands}      # 无论萌发与否，检查过的不重复付 LLM 费
@@ -115,6 +167,7 @@ class Intero:
     def add_intention(self, kind: str, payload: str, urgency: float = 0.5, ttl: float = 3600.0) -> dict:
         """注册一条意图（冲动）。心跳只裁决时机，说什么由 LLM 决定。"""
         self._beat()
+        urgency = min(1.0, urgency * self.urgency_multiplier(kind))
         self.hb.add_intention(Intention(kind=kind, payload=payload, urgency=urgency, ttl=ttl))
         self.save_heartbeat()
         return {"registered": kind, "urgency": urgency, "ttl": ttl, "队列": len(self.hb.intentions)}
@@ -190,6 +243,7 @@ class Intero:
         pending = self.hb.deliver_pending()
         if pending:
             self.save_heartbeat()
+            self.record_delivery([p.kind for p in pending], proactive=False)
             items = "\n".join(f"- [{p.kind}] {p.payload}" for p in pending)
             head = ("【待说事项】以下是你不在场时记忆器官决定要主动提起的事，"
                     "请在回答用户前先自然地处理：\n" + items)

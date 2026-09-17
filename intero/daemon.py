@@ -90,6 +90,7 @@ def deliver_due(organ: Intero, notify_fn=notify, voice: bool = False) -> int:
         notify_fn(p, voice=voice)
     if pending:
         organ.save_heartbeat()
+        organ.record_delivery([p.kind for p in pending], proactive=True)
     return len(pending)
 
 
