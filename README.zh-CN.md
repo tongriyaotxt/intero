@@ -1,6 +1,6 @@
 # intero
 
-**给冻结大模型外挂记忆与心跳器官——它记得你，还会主动开口。**
+**让 agent 拥有主动找你的能力。**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)](pyproject.toml)
@@ -9,8 +9,8 @@
 
 [English README](README.md)
 
-你的 LLM 在会话结束的瞬间就忘了你，而且永远只等你说第一句话。
-**intero** 给任何冻结 LLM 外挂两个器官——底座一个参数不动：
+今天的 agent 全都只会等你开口。**intero 给任何冻结 LLM 一条自主性循环**——
+裁决"何时该说"的心跳、让它"想说"的内态驱动、以及让开口"有内容"的记忆。底座一个参数不动。
 
 - 🧠 **记忆器官**——归一化原子事实、显著性门控写入、夜间 dream 策展、矛盾仲裁。重启不失忆；可导出成人可读 wiki 审计。
 - 💓 **心跳器官**——自主性循环：意图在拍卖里与"沉默底价"竞价，内态驱动（孤独/好奇/记忆健康）没事也会起心动念，daemon 通过 Windows 气泡/语音主动找你。
@@ -21,6 +21,19 @@
        【它曾主动说】09-17 17:47 它说：今晚还去攀岩不？
        LLM 捡起线头，带着完整记忆上下文继续唠。
 ```
+
+## "主动找你"到底是什么意思
+
+不是定时任务，不是通知规则，是一套有刹车的判断系统：
+
+- **与沉默竞价**——每条意图都要出价压过"沉默底价"才准开口，弱冲动自动输掉；
+- **熟成曲线**——死线越近出价越高，过了半衰期衰减，到 TTL 作废；
+- **内态驱动**——孤独（24h 没聊）、好奇（信息饥渴）、记忆健康（矛盾积压），零外部事件也会起心动念；
+- **反拗期与作息底价**——说完话必须冷却；23 点到早 7 点底价抬到 0.9，深夜不叫醒；
+- **理睬账本**——它记录你理没理，总被无视的话题自动闭嘴；
+- **对话线头**——主动说过的话出现在你下次会话的上下文里（【它曾主动说】），直接接着唠。
+
+背后支撑的是记忆器官：归一化原子事实、显著性门控写入、夜间 dream 策展、矛盾仲裁、人可读 wiki 导出。
 
 ## 为什么不用纯 RAG？
 
@@ -70,6 +83,22 @@ INTERO_STORE=.intero/content.db PYTHONPATH=. python -m intero.daemon --serve
 **MCP 工具**：`memory_write` · `memory_recall` · `memory_status` · `add_intention` · `heartbeat_tick` · `dream_now`
 
 适配任意 MCP 宿主。Kimi CLI：`kimi --mcp-config-file .kimi/mcp.json`（参考 `.kimi/mcp.json.example`）。
+
+## 可拓展性
+
+每个器官都是插座——换掉任何一个都不影响其他：
+
+| 插座 | 默认实现 | 可以换成 |
+|---|---|---|
+| 宿主 LLM | 任意 MCP 宿主（Kimi CLI 已验证） | Claude Code、Cursor、你自己的 agent 循环 |
+| Encoder | bge-base-zh（SentenceTransformers） | 任意嵌入 API/模型（`Encoder` 协议） |
+| 归一化/话术/意图自生 LLM | DeepSeek（OpenAI 兼容） | Kimi、本地 vLLM、离线=透传 |
+| 通知通道 | Windows 气泡 / SAPI 语音 | Telegram/IM 机器人——实现一个函数即可 |
+| 内态驱动 | 孤独 / 好奇 / 记忆健康 | 加一个驱动 = 一个字典项 + 一个指标函数 |
+| 记忆核心 | light（显著∨新颖） | `INTERO_MODE=full` 启用 Titans 在线权重 |
+
+daemon 只是 `Intero` 外面的一层循环；MCP server 只是 HTTP 上的一层薄壳。
+所有状态住在一个 sqlite 文件里——可备份、可快照、可一键遗忘。
 
 ## 关键思想（全部实测，诚实汇报）
 

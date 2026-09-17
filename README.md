@@ -1,6 +1,7 @@
 # intero
 
-**A memory & heartbeat organ for frozen LLMs — it remembers you, and speaks first.**
+**Give your agent the ability to come to you first.**
+**让 agent 拥有主动找你的能力。**
 
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 [![Python](https://img.shields.io/badge/python-%3E%3D3.10-blue)](pyproject.toml)
@@ -9,8 +10,9 @@
 
 [中文文档](README.zh-CN.md)
 
-Your LLM forgets you the moment the session ends, and never speaks unless spoken to.
-**intero** bolts two organs onto any frozen LLM — zero fine-tuning of the base model:
+Every agent today waits for you to speak. **intero gives any frozen LLM an autonomy loop** —
+a heartbeat that decides *when* to speak, internal drives that make it *want* to speak,
+and a memory that gives it something *worth* speaking about. Zero fine-tuning of the base model.
 
 - 🧠 **Memory organ** — normalized atomic facts, salience-gated writes, nightly dream curation, contradiction arbitration. Survives restarts; auditable as a human-readable wiki.
 - 💓 **Heartbeat organ** — an autonomy loop: intentions bid against a *silence floor* in an auction, internal drives (loneliness / curiosity / memory hygiene) sprout impulses even when nothing happened, and a daemon proactively pings you via Windows balloon / voice.
@@ -21,6 +23,19 @@ Your LLM forgets you the moment the session ends, and never speaks unless spoken
        【它曾主动说】09-17 17:47 它说：今晚还去攀岩不？
        LLM picks up the thread and keeps chatting — with full memory context.
 ```
+
+## What "speaking first" actually means
+
+Not a cron job. Not a notification rule. A judgment system with brakes:
+
+- **Auction over silence** — every intention bids against a *silence floor*; weak impulses lose and nothing happens;
+- **Ripening bids** — urgency grows as a deadline approaches, decays past its half-life, dies at TTL;
+- **Internal drives** — loneliness (idle 24h), curiosity (information hunger), memory hygiene (contradiction backlog) sprout impulses *with zero external events*;
+- **Refractory period & circadian floor** — after it speaks it must cool down; 23:00–07:00 the floor rises to 0.9;
+- **Feedback ledger** — it tracks whether you engaged, and topics you keep ignoring automatically quiet down;
+- **Conversation threads** — whatever it said proactively appears in your next session's context (`【它曾主动说】`), so you can simply pick up the chat.
+
+And the memory organ behind it — normalized atomic facts, salience-gated writes, nightly dream curation, contradiction arbitration, human-readable wiki export.
 
 ## Why not just RAG?
 
@@ -70,6 +85,22 @@ Host LLM (frozen) ── MCP stdio ──► mcp_server (thin client)
 **MCP tools**: `memory_write` · `memory_recall` · `memory_status` · `add_intention` · `heartbeat_tick` · `dream_now`
 
 Works with any MCP host. For Kimi CLI: `kimi --mcp-config-file .kimi/mcp.json` (see `.kimi/mcp.json.example`).
+
+## Extensibility
+
+Every organ is a plug point — swap pieces without touching the rest:
+
+| Socket | Default | Bring your own |
+|---|---|---|
+| Host LLM | any MCP host (Kimi CLI verified) | Claude Code, Cursor, your own agent loop |
+| Encoder | bge-base-zh (SentenceTransformers) | any embedding API/model (`Encoder` protocol) |
+| Normalizer / phrasing / sprouting LLM | DeepSeek (OpenAI-compatible) | Kimi, local vLLM, offline = pass-through |
+| Notification channel | Windows balloon / SAPI voice | Telegram/IM bot — implement one function |
+| Internal drives | social / curiosity / memory_health | add a drive = one dict entry + one metric |
+| Memory core | light (salience ∨ novelty) | `INTERO_MODE=full` for Titans online weights |
+
+The daemon is just a loop around `Intero`; the MCP server is a thin client over HTTP.
+Everything stateful lives in one sqlite file — fork it, snapshot it, delete it.
 
 ## Key ideas (all battle-tested, honestly reported)
 
