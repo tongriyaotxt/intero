@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "intero-memory": {
+      "command": "python",
+      "args": ["-m", "intero.mcp_server"],
+      "env": {
+        "PYTHONPATH": ".",
+        "PYTHONIOENCODING": "utf-8",
+        "HF_HUB_OFFLINE": "1",
+        "INTERO_STORE": ".intero/content.db"
+      }
+    }
+  }
+}

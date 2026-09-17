@@ -5,14 +5,37 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "intero"
 version = "0.1.0"
-description = "Titans-style test-time neural memory + autonomy heartbeat for frozen LLMs"
+description = "A memory & heartbeat organ for frozen LLMs — it remembers you, and speaks first"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+authors = [{ name = "intero contributors" }]
+keywords = ["llm", "memory", "agents", "proactive", "mcp", "sidecar"]
 requires-python = ">=3.10"
 dependencies = ["torch>=2.2", "numpy>=1.26"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 
 [project.optional-dependencies]
 st = ["sentence-transformers>=3.0"]
 mcp = ["mcp>=1.0"]
 bench = ["sentence-transformers>=3.0", "datasets>=2.0", "accelerate>=1.1.0"]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+intero-daemon = "intero.daemon:main"
+intero-demo = "intero.__main__:main"
+
+[project.urls]
+Homepage = "https://github.com/tongriyaotxt/intero"
+Issues = "https://github.com/tongriyaotxt/intero/issues"
 
 [tool.setuptools.packages.find]
 include = ["intero*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
