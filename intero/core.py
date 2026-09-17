@@ -17,6 +17,7 @@ import numpy as np
 
 from .encoder import Encoder, best_available
 from .heartbeat import Heartbeat, Intention
+from .intents import ReminderExtractor, best_available_extractor
 from .memory import TitansMemory
 from .normalize import Normalizer, best_available_normalizer
 from .store import ContentStore
@@ -40,6 +41,7 @@ class Intero:
         mem_hidden: int = 4096,
         mem_depth: int = 3,
         heartbeat: Heartbeat | None = None,
+        extractor: ReminderExtractor | None = None,
     ) -> None:
         self.enc = encoder or best_available()
         self.norm = normalizer or best_available_normalizer()
@@ -57,6 +59,7 @@ class Intero:
         # 心跳器官：状态随 sqlite 持久化（MCP 宿主 spawn-per-call，进程是短命的）
         self.hb = heartbeat or Heartbeat()
         self.reload_heartbeat()
+        self.reminder_extractor = extractor or best_available_extractor()
 
     # ---- 心跳：每次交互 = 一次交互记录 + 跳一拍（请求驱动宿主的懒惰心跳） ----
 
@@ -64,6 +67,50 @@ class Intero:
         self.hb.interact()
         self.hb.tick()
         self.save_heartbeat()
+
+    # ---- 意图自生：从库存事实里萌发提醒（dream 周期调用，也可显式调） ----
+
+    def derive_intentions(self, extractor: ReminderExtractor | None = None) -> dict:
+        """通读未检查过的库存事实，抽出到期事项注册成心跳意图。可审计可去重。"""
+        import time as _time
+
+        ex = extractor or self.reminder_extractor
+        seen = set(json.loads(self.st.get_meta_text("derived_fact_ids") or "[]"))
+        cands = [it for it in self.st.items()
+                 if it["kind"] in ("fact", "consolidated", "composite") and it["id"] not in seen]
+        if not cands:
+            return {"检查": 0, "萌发": 0, "extractor": ex.name}
+        rems = ex.extract([it["text"] for it in cands])
+        known = {i.payload for i in self.hb.intentions} | {p.payload for p in self.hb.pending}
+        now = _time.time()
+        n = 0
+        for r in rems:
+            payload = r["payload"]
+            if payload in known:
+                continue
+            if r["deadline_ts"] is not None:
+                ttl = r["deadline_ts"] - now
+                if ttl <= 0:
+                    continue                    # 已过期不萌发
+            else:
+                ttl = 6 * 3600.0                # 无死线：默认半天时效
+            self.hb.add_intention(Intention(
+                kind="sprout", payload=payload, urgency=r["urgency"], ttl=ttl))
+            known.add(payload)
+            n += 1
+        seen |= {it["id"] for it in cands}      # 无论萌发与否，检查过的不重复付 LLM 费
+        self.st.set_meta_text("derived_fact_ids", json.dumps(sorted(seen)))
+        self.save_heartbeat()
+        return {"检查": len(cands), "萌发": n, "extractor": ex.name}
+
+    # ---- 夜间周期：dream（回放/策展/晋升） + 意图自生 ----
+
+    def dream_cycle(self, verbose: bool = False) -> dict:
+        from .dream import dream
+
+        report = dream(self.mem, self.st, verbose=verbose)
+        report["意图自生"] = self.derive_intentions()
+        return report
 
     def add_intention(self, kind: str, payload: str, urgency: float = 0.5, ttl: float = 3600.0) -> dict:
         """注册一条意图（冲动）。心跳只裁决时机，说什么由 LLM 决定。"""

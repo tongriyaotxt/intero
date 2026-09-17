@@ -54,6 +54,11 @@ def heartbeat_tick() -> dict:
     return _organ().tick()
 
 
+def dream_now() -> dict:
+    """立即跑一个夜间周期：dream 回放/策展/晋升 + 意图自生（从记忆事实里萌发提醒意图）。"""
+    return _organ().dream_cycle()
+
+
 def main() -> None:
     try:   # mcp 2.x：FastMCP 改名 MCPServer
         from mcp.server.mcpserver import MCPServer as Server
@@ -66,6 +71,7 @@ def main() -> None:
     mcp.tool()(memory_status)
     mcp.tool()(add_intention)
     mcp.tool()(heartbeat_tick)
+    mcp.tool()(dream_now)
     mcp.run()
 
 

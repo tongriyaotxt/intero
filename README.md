@@ -44,6 +44,8 @@ INTERO_STORE=.intero/content.db HF_HUB_OFFLINE=1 PYTHONPATH=. \
 你离开（WATCH/DREAM）→ Windows 气泡（+可选 SAPI 语音）主动搭话。
 daemon 每拍前先 reload sqlite 快照（吸收 MCP 侧新意图），跳完即存——进程间只通过库通信。
 已实测（2026-09-17）：注册意图后 daemon 在 60 秒静默期结束的第一拍主动弹窗，送达即清不重复。
+进入 DREAM（休眠）的第一拍自动跑夜间周期：dream 回放/策展/晋升 + **意图自生**（LLM 通读库存
+事实，抽出到期事项自动注册提醒意图，kind="sprout"，可审计可去重）。也可 MCP 调 `dream_now` 手动触发。
 
 `.kimi/mcp.json` 已配好（stdio，绝对路径，记忆持久化到 `.intero/content.db`）：
 
@@ -78,7 +80,8 @@ interact() + tick()（懒惰心跳，TTL/状态迁移走墙钟）；拍卖赢出
 | `intero/heartbeat.py` | M3 心跳：三态变心率 + 意图调度 + 主动性拍卖 + 反拗期 + 待说队列 + 快照持久化 |
 | `intero/dream.py` | M5 夜间时钟：Dream 回放 + 策展 + 晋升门 |
 | `intero/mcp_server.py` | MCP server（memory_write/recall/status + add_intention/heartbeat_tick 五工具） |
-| `intero/daemon.py` | 主动搭话守护进程：常驻起搏 + 气泡/语音通知（Windows 原生零依赖） |
+| `intero/daemon.py` | 主动搭话守护进程：常驻起搏 + 气泡/语音通知 + DREAM 态夜间周期 |
+| `intero/intents.py` | 意图自生：LLM 从库存事实抽取到期事项（api/null 双后端，失败安全空） |
 | `bench/calibrate.py` | 三相位标定台（背记/抗噪/过期），冠军配置来源 |
 | `bench/CALIBRATION.md` | 标定实录（失败诊断 + 冻结值 + 探针实录 + M1.5 改道） |
 | `bench/scenarios.py` / `m2_benchmark.py` | M2 剧本生成器 + 三方对拍台 |

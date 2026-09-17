@@ -95,12 +95,18 @@ def deliver_due(organ: Intero, notify_fn=notify, voice: bool = False) -> int:
 def run(organ: Intero, voice: bool = False, once: bool = False,
         notify_fn=notify, out=sys.stdout) -> None:
     print(f"[intero-daemon] 起搏开始（心率随状态变：1s/10s/60s）voice={voice}", file=out, flush=True)
+    prev_state = None                       # None → 首拍若在 DREAM 也会跑一次夜间周期
     while True:
         organ.reload_heartbeat()          # 吸收 MCP 侧的新意图/交互时间
         r = organ.daemon_tick()           # 只跳拍，不记交互（daemon 不是用户）
         n = deliver_due(organ, notify_fn=notify_fn, voice=voice)
         print(f"[intero-daemon] tick 状态={r['状态']} 意图={r['意图队列']} "
               f"待说={r['待说']} 本次主动送达={n}", file=out, flush=True)
+        # 进入 DREAM（休眠）的第一拍：跑夜间周期——回放巩固 + 意图自生
+        if organ.hb.state == HeartState.DREAM and prev_state != HeartState.DREAM:
+            report = organ.dream_cycle()
+            print(f"[intero-daemon] 夜间周期: {report}", file=out, flush=True)
+        prev_state = organ.hb.state
         if once:
             return
         time.sleep(max(1.0, organ.hb.rate))
