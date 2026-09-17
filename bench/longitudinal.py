@@ -143,13 +143,15 @@ def generate() -> None:
 # ---------------- 双臂 ----------------
 
 class SidecarArm:
-    name = "sidecar"
+    """full（默认，Titans 门控）或 light（INTERO_MODE=light，显著∨新颖门控）。"""
 
     def __init__(self, tmp: str):
         enc = STEncoder()   # bge-base，生产同款
+        self.light = os.environ.get("INTERO_MODE") == "light"
+        self.name = "sidecar-light" if self.light else "sidecar"
         self.organ = Intero(
             encoder=enc, normalizer=NullNormalizer(),
-            memory=TitansMemory(dim=enc.dim, hidden=4096, depth=3, seed=0),
+            memory=None if self.light else TitansMemory(dim=enc.dim, hidden=4096, depth=3, seed=0),
             store_path=os.path.join(tmp, "sidecar.db"),
             extractor=NullReminderExtractor())
         self.writes = 0
@@ -169,7 +171,8 @@ class SidecarArm:
         kinds: dict[str, int] = {}
         for it in self.organ.st.items():
             kinds[it["kind"]] = kinds.get(it["kind"], 0) + 1
-        return {"库存": len(self.organ.st), "写入": self.organ.mem.writes,
+        return {"库存": len(self.organ.st),
+                "写入": self.organ.mem.writes if self.organ.mem else "-",
                 "λ": round(self.organ.st.lam, 3), "kinds": kinds}
 
 

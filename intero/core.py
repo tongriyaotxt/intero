@@ -53,10 +53,19 @@ class Intero:
         mem_depth: int = 3,
         heartbeat: Heartbeat | None = None,
         extractor: ReminderExtractor | None = None,
+        mode: str | None = None,
+        novelty_cap: float = 0.75,
     ) -> None:
+        # 模式（2026-09-17 用户拍板，架构决策）：
+        #   light（默认）——无 Titans：写入门=显著∨新颖（冗余度<novelty_cap），
+        #          dream=策展+重复巩固；λ 全程 0 的实证下，召回行为与 full 相同
+        #   full ———— Titans 在线权重实验层（保留全部测试；传入 memory= 即视为 full）
+        self.mode = mode or os.environ.get("INTERO_MODE") or ("full" if memory else "light")
+        self.novelty_cap = novelty_cap
         self.enc = encoder or best_available()
         self.norm = normalizer or best_available_normalizer()
-        self.mem = memory or TitansMemory(dim=self.enc.dim, hidden=mem_hidden, depth=mem_depth, seed=0)
+        self.mem = memory or (TitansMemory(dim=self.enc.dim, hidden=mem_hidden, depth=mem_depth, seed=0)
+                              if self.mode == "full" else None)
         # 优先级：显式参数 > 环境变量 INTERO_STORE（MCP/常驻场景持久化）> 临时目录（测试隔离）
         path = (
             store_path
@@ -175,7 +184,6 @@ class Intero:
         report["意图自生"] = self.derive_intentions()
         report["wiki"] = self.export_wiki()
         return report
-
     # ---- wiki 只读导出层（派生物，sqlite 仍是唯一事实源） ----
 
     def export_wiki(self, out_dir: str = ".intero/wiki") -> int:
@@ -235,20 +243,29 @@ class Intero:
         written = 0
         for f in facts:
             v = self._center(self.enc.encode([f])[0])
-            # 显著事实绕过惊讶门（显著 ∨ 惊讶 = 写；两者皆无 = 省）
-            if self.mem.write(v, v, redundancy=self.st.redundancy(v), force=is_salient(f)):
-                self.st.add(f, v, kind=kind)
-                written += 1
-            self._prewrite.append(self.mem.last_prewrite_mse or 0.0)
-            if self.mem.writes % 32 == 0 and self._prewrite:
-                self.st.update_lambda(float(np.mean(self._prewrite[-64:])), 1.0 / self.enc.dim)
+            red = self.st.redundancy(v)
+            if self.mode == "full":
+                # 显著 ∨ 惊讶分位（Titans 梯度惊讶门）
+                hit = self.mem.write(v, v, redundancy=red, force=is_salient(f))
+                if hit:
+                    self.st.add(f, v, kind=kind)
+                self._prewrite.append(self.mem.last_prewrite_mse or 0.0)
+                if self.mem.writes % 32 == 0 and self._prewrite:
+                    self.st.update_lambda(float(np.mean(self._prewrite[-64:])), 1.0 / self.enc.dim)
+            else:
+                # light：显著 ∨ 新颖（只拦与用户无关且不新鲜的信息流噪声）
+                hit = is_salient(f) or red < self.novelty_cap
+                if hit:
+                    self.st.add(f, v, kind=kind)
+            written += int(hit)
         return {"facts": facts, "written": written}
 
     # ---- 读出 ----
 
     def retrieve(self, query: str, topk: int = 3) -> list[dict]:
         qv = self._center(self.enc.encode([query])[0])
-        return self.st.retrieve(qv, m_out=self.mem.read(qv), topk=topk)
+        m_out = self.mem.read(qv) if self.mem is not None else None
+        return self.st.retrieve(qv, m_out=m_out, topk=topk)
 
     def recall(self, query: str, topk: int = 5, budget_chars: int = 600) -> str:
         """prompt 注入装配：检索 → 记忆块（可直接拼进 system/user prompt）。
@@ -276,12 +293,13 @@ class Intero:
         self._beat()
         return {
             "摄入": self.n_in,
-            "写入": self.mem.writes,
+            "写入": self.mem.writes if self.mem else "-",
             "库存": len(self.st),
             "λ": round(self.st.lam, 3),
-            "回滚": self.mem.rollbacks,
+            "回滚": self.mem.rollbacks if self.mem else "-",
             "encoder": self.enc.name,
             "normalizer": self.norm.name,
+            "模式": self.mode,
             "心跳": self.hb.state.value,
             "意图": len(self.hb.intentions),
             "待说": len(self.hb.pending),

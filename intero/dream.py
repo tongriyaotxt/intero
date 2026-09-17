@@ -26,28 +26,29 @@ CONFLICT_LOW, CONFLICT_HIGH = 0.75, 0.97   # 疑似矛盾带（像又没那么�
 
 
 def dream(
-    mem: TitansMemory,
+    mem: TitansMemory | None,
     store: ContentStore,
     replay_inner_steps: int = 24,
     verbose: bool = False,
 ) -> dict:
-    """跑一个夜间周期，返回报告。"""
+    """跑一个夜间周期，返回报告。mem=None 为 light 模式（无回放，晋升靠重复出现）。"""
     report: dict = {"回放": 0, "去重": 0, "矛盾对": 0, "晋升": 0}
     items = store.items()
     if not items:
         return report
 
-    recon_before = mem.recon_error()
+    recon_before = mem.recon_error() if mem else None
 
-    # ---- Dream 回放：强制写入，加深内循环 ----
-    saved_steps, saved_early = mem.inner_steps, mem.early_stop_mse
-    mem.inner_steps = replay_inner_steps
-    for it in items:
-        if it["kind"] == "noise":
-            continue
-        mem.write(it["vec"], it["vec"], redundancy=store.redundancy(it["vec"]), force=True)
-        report["回放"] += 1
-    mem.inner_steps, mem.early_stop_mse = saved_steps, saved_early
+    # ---- Dream 回放：强制写入，加深内循环（仅 full 模式） ----
+    if mem is not None:
+        saved_steps, saved_early = mem.inner_steps, mem.early_stop_mse
+        mem.inner_steps = replay_inner_steps
+        for it in items:
+            if it["kind"] == "noise":
+                continue
+            mem.write(it["vec"], it["vec"], redundancy=store.redundancy(it["vec"]), force=True)
+            report["回放"] += 1
+        mem.inner_steps, mem.early_stop_mse = saved_steps, saved_early
 
     # ---- 策展：去重 + 矛盾标记 ----
     V = np.stack([it["vec"] for it in items])
@@ -69,22 +70,36 @@ def dream(
                 store.update_kind(items[j]["id"], "conflict")
                 report["矛盾对"] += 1
 
-    # ---- 晋升门：记忆表示良好（重构误差低于中位数）的事实晋升 ----
+    # ---- 晋升门 ----
+    # full：记忆表示良好（自重构误差低于中位数）的事实晋升；
+    # light：重复出现过（与邻居相似度高=多次被提及）的事实晋升——重复即巩固。
     survivors = [it for it in store.items() if it["kind"] in ("fact", "composite")]
     if survivors:
-        errs = []
-        for it in survivors:
-            m = mem.read(it["vec"])
-            errs.append(float(((m - it["vec"]) ** 2).mean()))
-        median = float(np.median(errs))
-        for it, e in zip(survivors, errs):
-            if e <= median:
-                store.update_kind(it["id"], "consolidated")
-                report["晋升"] += 1
+        if mem is not None:
+            errs = []
+            for it in survivors:
+                m = mem.read(it["vec"])
+                errs.append(float(((m - it["vec"]) ** 2).mean()))
+            median = float(np.median(errs))
+            for it, e in zip(survivors, errs):
+                if e <= median:
+                    store.update_kind(it["id"], "consolidated")
+                    report["晋升"] += 1
+        else:
+            V2 = np.stack([it["vec"] for it in survivors])
+            sims2 = V2 @ V2.T
+            np.fill_diagonal(sims2, 0.0)
+            familiarity = sims2.max(axis=1)          # 与最像邻居的余弦 = 被重复提及度
+            threshold = float(np.median(familiarity))
+            for it, fam in zip(survivors, familiarity):
+                if fam >= threshold:
+                    store.update_kind(it["id"], "consolidated")
+                    report["晋升"] += 1
 
-    report["自重构误差"] = {"前": recon_before, "后": mem.recon_error()}
-    if recon_before is not None and mem.recon_error() is not None:
-        report["健康"] = mem.recon_error() <= recon_before * 1.5
+    if mem is not None:
+        report["自重构误差"] = {"前": recon_before, "后": mem.recon_error()}
+        if recon_before is not None and mem.recon_error() is not None:
+            report["健康"] = mem.recon_error() <= recon_before * 1.5
     if verbose:
         print("[dream]", report)
     return report

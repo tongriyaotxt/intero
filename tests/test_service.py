@@ -51,7 +51,9 @@ class TestService(unittest.TestCase):
         self.assertLess(time.time() - t0, 2.0)                 # 快速失败，不挂起
 
     def test_write_recall_roundtrip(self):
-        r = self.remote.ingest("小李喝咖啡不加糖")
+        # 用显著事实（含"用户"）：共享 organ 的门控在并发测试后已预热，
+        # 不显著的事实可能被门控拦下——本测试验的是 HTTP 回路，不是门控
+        r = self.remote.ingest("用户小李喝咖啡不加糖")
         self.assertEqual(r["written"], 1)
         self.assertIn("小李", self.remote.recall("小李喝咖啡加什么"))
 
