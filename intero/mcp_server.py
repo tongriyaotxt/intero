@@ -15,13 +15,17 @@ from __future__ import annotations
 
 from .core import Intero
 
-_INTERO: Intero | None = None
+_INTERO = None
 
 
-def _organ() -> Intero:
+def _organ():
+    """优先连常驻服务（毫秒级）；服务没起则回退本地 Intero（慢但自治）。"""
     global _INTERO
     if _INTERO is None:
-        _INTERO = Intero()
+        from .client import RemoteOrgan
+
+        remote = RemoteOrgan()
+        _INTERO = remote if remote.is_alive() else Intero()
     return _INTERO
 
 

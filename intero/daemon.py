@@ -26,6 +26,7 @@ import time
 
 from .core import Intero
 from .heartbeat import HeartState, Intention
+from .service import DEFAULT_PORT, serve_in_thread
 
 
 # ---- 通知通道（Windows 原生，零第三方依赖） ----
@@ -116,8 +117,14 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="intero 主动搭话守护进程")
     ap.add_argument("--voice", action="store_true", help="气泡之外再语音播报")
     ap.add_argument("--once", action="store_true", help="只跳一拍（调试用）")
+    ap.add_argument("--serve", action="store_true", help="内嵌常驻 HTTP 服务（MCP 走它，毫秒级）")
+    ap.add_argument("--port", type=int, default=DEFAULT_PORT)
     args = ap.parse_args()
-    run(Intero(), voice=args.voice, once=args.once)
+    organ = Intero()
+    if args.serve:
+        serve_in_thread(organ, port=args.port)
+        print(f"[intero-daemon] 常驻服务已内嵌于 :{args.port}", flush=True)
+    run(organ, voice=args.voice, once=args.once)
 
 
 if __name__ == "__main__":

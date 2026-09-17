@@ -24,7 +24,9 @@ class ContentStore:
         self.path = path
         self.dim = dim
         self.lam_max = lam_max
-        self._db = sqlite3.connect(path)
+        # check_same_thread=False：服务化后 HTTP 处理线程会用本连接；
+        # 并发安全由 service.py 的大锁保证（个人记忆 QPS≈0，简单正确优先）
+        self._db = sqlite3.connect(path, check_same_thread=False)
         self._db.execute(
             "CREATE TABLE IF NOT EXISTS items("
             "id INTEGER PRIMARY KEY, text TEXT, kind TEXT, ts REAL,"
